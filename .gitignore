@@ -2,3 +2,5 @@ node_modules/
 examples/output/
 types/
 dist/
+data/
+dl/

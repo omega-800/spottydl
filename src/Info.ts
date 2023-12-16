@@ -63,7 +63,7 @@ export const getTrack = async (url: string = ''): Promise<Track | string> => {
 
         return tags
     } catch (err: any) {
-        return `Caught: ${err.name} | ${err.message}`
+        msg: return `Caught: ${err.name} | ${err.message}`
     }
 }
 
@@ -81,6 +81,16 @@ export const getAlbum = async (url: string = ''): Promise<Album | string> => {
         let spData = JSON.parse(Buffer.from(decodeURIComponent(info[1]), 'base64').toString('utf8'))
         // Assign necessary items to a variable
         let spTrk = spData.entities.items[`spotify:${linkData.type}:${linkData.id}`]
+
+        /*
+        let artId = spTrk.artists.items[0].uri.split(':').pop()
+        let artType = 'artist'
+        let artistURL = (0, Util_1.getProperURL)(artId, artType)
+        let art = await axios_1.default.get(artistURL)
+        let artInfo = /<script id="initial-state" type="text\/plain">(.*?)<\/script>/s.exec(art.data)
+        let artData = JSON.parse(Buffer.from(decodeURIComponent(artInfo[1]), 'base64').toString('utf8'))
+        console.log(artData.entities.items[`spotify:${artType}:${artId}`])
+        */
         let tags: Album = {
             name: spTrk.name,
             artist: spTrk.artists.items.map((e: any) => e.profile.name).join(', '),
@@ -93,14 +103,27 @@ export const getAlbum = async (url: string = ''): Promise<Album | string> => {
         await ytm.initialize()
         let alb = await ytm.searchAlbums(`${tags.artist} - ${tags.name}`)
         let yt_tracks: any | undefined = await get_album_playlist(alb[0].playlistId) // Get track ids from youtube
-        spTrk.tracks.items.forEach((i: any, n: number) => {
-            tags.tracks.push({
-                title: i.track.name,
-                id: yt_tracks[n].playlistVideoRenderer.videoId,
-                trackNumber: i.track.trackNumber
+        if (yt_tracks.length != spTrk.tracks.items.length) {
+            console.log(yt_tracks.length, spTrk.tracks.items.length)
+            console.log(tags.name, tags.artist)
+            //console.log('yt', yt_tracks)
+            //console.log('spTrk.tracks.items.length', spTrk.tracks.items)
+            yt_tracks.forEach((i, n) => {
+                tags.tracks.push({
+                    title: spTrk.tracks.items[n].track.name,
+                    id: i.playlistVideoRenderer.videoId,
+                    trackNumber: spTrk.tracks.items[n].track.trackNumber
+                })
             })
-        })
-
+        } else {
+            spTrk.tracks.items.forEach((i: any, n: number) => {
+                tags.tracks.push({
+                    title: i.track.name,
+                    id: yt_tracks[n].playlistVideoRenderer.videoId,
+                    trackNumber: i.track.trackNumber
+                })
+            })
+        }
         return tags
     } catch (err: any) {
         return `Caught: ${err.name} | ${err.message}`
