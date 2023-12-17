@@ -9,8 +9,8 @@ import { fmtAlbumPath, fmtAlbumTrack, fmtSinglePath, fmtSingleTrack, checkLinkTy
 
 let logPath = '../data/log/'
 let historyPath = '../data/history.csv'
-let spPath = '../dl/spotify'
-let ytPath = '../dl/yt'
+let spPath = '../downloads/spotify'
+let ytPath = '../downloads/yt'
 
 async function fromYtPlaylist(id: string) {
     const playlist = await ytpl(id)
@@ -65,34 +65,6 @@ export function ytDl(item: QueueItem) {
                 queue.finished.push(track[0])
             }
         })
-
-        /*
-        dlAudio({
-            url: item.url,
-            folder: folder, // optional, default: "youtube-exec"
-            filename: filename, // optional, default: video title
-            quality: 'best' // or "lowest"; default: "best"
-        })
-            .then(() => {
-                console.log('Audio downloaded successfully')
-                queue.finished.push(
-                    queue.downloading.splice(
-                        queue.downloading.findIndex((i) => i.id == item.id),
-                        1
-                    )[0]
-                )
-            })
-            .catch((err: any) => {
-                console.error('An error occurred:', err.message)
-                queue.errors.push({
-                    msg: err.message,
-                    ...queue.downloading.splice(
-                        queue.downloading.findIndex((i) => i.id == item.id),
-                        1
-                    )[0]
-                })
-            })
-            */
     } else {
         queue.finished.push(
             queue.downloading.splice(
@@ -151,6 +123,8 @@ async function dlSpAlbum(id: string) {
 
 let logTrash = [0, 0, 0, 0, 0]
 const ytReg = /(https:\/\/)?(www|music)?.?youtu(\.be|be\.com)\/(playlist|watch)\?(list|v)=(.*)\/?&?/
+const csvReg = /.+\.csv$/
+const jsonReg = /.+\.json$/
 function startDl(urls?: string[]) {
     fs.mkdirSync(logPath, { recursive: true })
     if (urls) {
@@ -186,39 +160,38 @@ function startDl(urls?: string[]) {
                     } else {
                         console.log('Cannot parse yt URL')
                     }
+                } else if (csvReg.test(url)) {
+                    fromYtCsv(url)
+                } else if (jsonReg.test(url)) {
+                    const library = JSON.parse(fs.readFileSync(url).toString())
+                    library.tracks.forEach((track: any) => {
+                        if (
+                            !fs.existsSync(
+                                `${spPath}/${fmtSinglePath('spotify_likes', track)}/${fmtSingleTrack(track)}`
+                            )
+                        ) {
+                            queue.enqueue({
+                                fromYoutube: false,
+                                id: track.uri.split(':').pop(),
+                                folder: 'likes'
+                            })
+                        }
+                    })
+
+                    library.albums.forEach((album: any) => {
+                        queue.enqueue({
+                            fromYoutube: false,
+                            id: album.uri.split(':').pop(),
+                            isAlbum: true
+                        })
+                    })
                 } else {
                     console.log('URL is not valid')
                 }
             }
         })
     } else {
-        //fromYtCsv('../data/youtube/music-library-songs/music-library-songs.csv');
-        //fromYtPlaylist('OLAK5uy_mQ_an9BxL2E08-Qrmdu4KoS2bJfkn_7kE');
-        /*
-    const myLibrary = JSON.parse(
-      fs.readFileSync('../data/Spotify Account Data/YourLibrary.json').toString()
-    );
-    myLibrary.tracks.forEach((track) => {
-      if (
-        !fs.existsSync(
-          `${spPath}/${fmtSinglePath('likes', track)}/${fmtSingleTrack(track)}`
-        )
-      ) {
-        queue.enqueue({
-          fromYoutube: false,
-          id: track.uri.split(':').pop(),
-          folder: 'likes',
-        });
-      }
-    });
-  
-    myLibrary.albums.forEach((album) => {
-      queue.enqueue({
-        fromYoutube: false,
-        id: album.uri.split(':').pop(),
-        album: true,
-      });
-    });*/
+        // hardcode stuff if u want or prompt
     }
 
     let timeout = setInterval(function () {
@@ -232,7 +205,7 @@ function startDl(urls?: string[]) {
                 clearInterval(timeout)
             }
         } else if (
-            (queue.downloading.filter((i) => i?.album).length > 0 && queue.downloading.length < 1) ||
+            (queue.downloading.filter((i) => i?.album).length > 0 && queue.downloading.length < 5) ||
             (queue.downloading.filter((i) => i?.album).length == 0 && queue.downloading.length < 20)
         ) {
             queue.downloadNext()
@@ -259,5 +232,5 @@ logPath = logPath + now
 if (process.argv.length > 2) {
     startDl(process.argv.slice(2, process.argv.length))
 } else {
-    startDl(undefined)
+    startDl()
 }
