@@ -3,14 +3,16 @@ import { existsSync } from 'fs'
 import { isArray } from 'util'
 import os from 'os'
 
-export const uid = ():string =>
-  Date.now().toString(36) + Math.random().toString(36).substr(2);
-export const sanitize = (path:string):string => path.replaceAll('/', '|').replaceAll('~', '=')
-export const fmtAlbumTrack = (item:Track):string => `${item.trackNumber}. ${sanitize(item.title)}`
-export const fmtAlbumPath = (path:string, item:Album):string => `${path}/${sanitize(item.artist)}/${sanitize(item.name)}/`
-export const fmtSingleTrack = (item:Track):string =>
-    `${sanitize(item.title)}${item.artist ? ` - ${sanitize(item.artist)}` : ''}${item.album ? ` [${sanitize(item.album)}]` : ''}`
-export const fmtSinglePath = (path:string, item:Track):string =>
+export const uid = (): string => Date.now().toString(36) + Math.random().toString(36).substr(2)
+export const sanitize = (path: string): string => path.replaceAll('/', '|').replaceAll('~', '=')
+export const fmtAlbumTrack = (item: Track): string => `${item.trackNumber}. ${sanitize(item.title)}`
+export const fmtAlbumPath = (path: string, item: Album): string =>
+    `${path}/${sanitize(item.artist)}/${sanitize(item.name)}/`
+export const fmtSingleTrack = (item: Track): string =>
+    `${sanitize(item.title)}${item.artist ? ` - ${sanitize(item.artist)}` : ''}${
+        item.album ? ` [${sanitize(item.album)}]` : ''
+    }`
+export const fmtSinglePath = (path: string, item: Track): string =>
     `${path}${item.artist ? `/${item.artist}` : ''}${item.artist && item.album ? `/${item.album}` : ''}`
 
 export const checkLinkType = (link: string) => {

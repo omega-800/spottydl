@@ -104,11 +104,13 @@ export const getAlbum = async (url: string = ''): Promise<Album | string> => {
         let alb = await ytm.searchAlbums(`${tags.artist} - ${tags.name}`)
         let yt_tracks: any | undefined = await get_album_playlist(alb[0].playlistId) // Get track ids from youtube
         if (yt_tracks.length != spTrk.tracks.items.length) {
-            console.log(yt_tracks.length, spTrk.tracks.items.length)
-            console.log(tags.name, tags.artist)
+            console.log(
+                `Youtube has ${yt_tracks.length} songs for this album but spotify has ${spTrk.tracks.items.length}`
+            )
+            console.log(`${tags.name} (${tags.artist})`)
             //console.log('yt', yt_tracks)
             //console.log('spTrk.tracks.items.length', spTrk.tracks.items)
-            yt_tracks.forEach((i, n) => {
+            yt_tracks.forEach((i: any, n: number) => {
                 tags.tracks.push({
                     title: spTrk.tracks.items[n].track.name,
                     id: i.playlistVideoRenderer.videoId,

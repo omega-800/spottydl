@@ -77,7 +77,7 @@ export class Queue {
 
 function itemToLog(path: string, type: string, item: any) {
     let filename = `${path}/${type}.json`
-    console.log(type, item)
+    //console.log(type, item)
     if (!fs.existsSync(filename)) fs.writeFileSync(filename, '[')
     fs.readFile(filename, function (err, data) {
         /*

@@ -1,16 +1,17 @@
 import ytpl from 'ytpl'
 import csv from 'csvtojson'
 import fs from 'fs'
+import path from 'path'
 import { QueueItem } from './Queue'
 import { Queue } from './Queue'
 import { downloadTrack, downloadAlbum, Track, Album } from '.'
 import { getTrack, getAlbum } from './Info'
 import { fmtAlbumPath, fmtAlbumTrack, fmtSinglePath, fmtSingleTrack, checkLinkType, sanitize } from './Util'
 
-let logPath = '../data/log/'
-let historyPath = '../data/history.csv'
-let spPath = '../downloads/spotify'
-let ytPath = '../downloads/yt'
+let logPath = 'data/log/'
+let historyPath = 'data/history.csv'
+let spPath = 'downloads/spotify'
+let ytPath = 'downloads/yt'
 
 async function fromYtPlaylist(id: string) {
     const playlist = await ytpl(id)
@@ -129,6 +130,7 @@ function startDl(urls?: string[]) {
     fs.mkdirSync(logPath, { recursive: true })
     if (urls) {
         urls.forEach((url) => {
+            if (!fs.existsSync(historyPath)) fs.writeFileSync(historyPath, 'Date;URL')
             if (fs.readFileSync(historyPath).toString().split(';').pop() != url)
                 fs.appendFileSync(historyPath, `\n${now};${url}`)
             try {
@@ -165,6 +167,7 @@ function startDl(urls?: string[]) {
                 } else if (jsonReg.test(url)) {
                     const library = JSON.parse(fs.readFileSync(url).toString())
                     library.tracks.forEach((track: any) => {
+                        track = { ...track, title: track.track }
                         if (
                             !fs.existsSync(
                                 `${spPath}/${fmtSinglePath('spotify_likes', track)}/${fmtSingleTrack(track)}`
@@ -225,9 +228,9 @@ function startDl(urls?: string[]) {
     }, 100)
 }
 
-let queue = new Queue()
 let now = new Date().toISOString()
 logPath = logPath + now
+let queue = new Queue(logPath)
 
 if (process.argv.length > 2) {
     startDl(process.argv.slice(2, process.argv.length))
