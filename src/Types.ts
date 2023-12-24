@@ -51,26 +51,3 @@ export interface Results {
     id?: string
     tags?: object
 }
-
-export interface LogItem {
-    url: string
-    filename: string
-}
-
-export interface LogItemSuccess extends LogItem {
-    type: 'Track' | 'Playlist' | 'Album'
-}
-
-export interface LogItemError extends LogItem {
-    mgs: string
-}
-
-export interface LogImageError extends LogItemError {
-    imageUrl: string
-}
-
-export interface LogTrackError extends LogItemError {}
-
-export interface LogAlbumError extends LogItemError {
-    tracks: LogTrackError[]
-}

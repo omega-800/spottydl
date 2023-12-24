@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { isArray } from 'util'
 import os from 'os'
 import { distance } from 'closest-match'
+import { QueueItem } from './Queue'
 
 export const logSuccess = (s: string) => console.log(`\x1b[1;90m\u258c\x1b[0;32m \u2713 ${s}\x1b[0m`)
 export const logItem = (s: string) => console.log(`\x1b[1;90m\u258c\x1b[1;35m \u1405 ${s}\x1b[0m`)
@@ -59,17 +60,35 @@ export function closestGenre(ar1: string[], ar2: string[]) {
     return ar2[res_r!]
 }
 
-export const checkLinkType = (link: string) => {
+export const checkLinkType = (link: string): QueueItem | undefined => {
     const reg =
         /^(?:spotify:|(?:https?:\/\/(?:open|play|embed)\.spotify\.com\/))(?:embed|\?uri=spotify:|embed\?uri=spotify:)?\/?(album|track|playlist)(?::|\/)((?:[0-9a-zA-Z]){22})/
     const match = link.match(reg)
-    if (match) {
-        return {
-            type: match[1],
-            id: match[2]
+    if (!match) return
+    return {
+        type: match[1] == 'album' ? 'Album' : match[1] == 'track' ? 'Track' : 'Playlist',
+        id: match[2],
+        fromYoutube: false
+    }
+}
+
+export const checkYtLinkType = (link: string): QueueItem | undefined => {
+    const ytReg = /(https:\/\/)?(www|music)?.?youtu(\.be|be\.com)\/(playlist|watch)\?(list|v)=(.*)\/?&?/
+    if (ytReg.test(link)) {
+        let match = link.match(ytReg)
+        let type = match?.[5]
+        let id = match?.[6]
+        if (type == 'list' && id) {
+            return {
+                type: 'Playlist',
+                id: id,
+                fromYoutube: true
+            }
+        } else if (type == 'v') {
+            logInfo('TODO: implement YT track')
+        } else {
+            logError('Cannot parse yt URL')
         }
-    } else {
-        throw { name: 'URL Error', message: `'${link}' is not a Spotify URL...` }
     }
 }
 
