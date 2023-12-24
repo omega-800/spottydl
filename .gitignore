@@ -3,4 +3,5 @@ examples/output/
 types/
 dist/
 data/
-dl/
+downloads/
+.env

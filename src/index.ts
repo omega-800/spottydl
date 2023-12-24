@@ -16,8 +16,31 @@ export type Album = {
     name: string
     artist: string
     year: string
-    tracks: any | null
+    tracks: TmpTrack[]
     albumCoverURL: string
+
+    genre?: string
+    comment?: {
+        language: string
+        text: string
+    }
+}
+
+export type TmpTrack = {
+    title: string
+    id: string
+    trackNumber: string
+
+    length?: string
+    unsynchronisedLyrics?: {
+        language: string
+        text: string
+    }
+    genre?: string
+    comment?: {
+        language: string
+        text: string
+    }
 }
 
 export type Playlist = {

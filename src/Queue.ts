@@ -1,5 +1,5 @@
 import fs from 'fs'
-import { uid } from './Util'
+import { logEnd, logError, logInfo, logStart, uid } from './Util'
 import { ytDl, spDl } from './YtDl'
 
 export interface QueueItem {
@@ -47,18 +47,20 @@ export class Queue {
     }
 
     checkLoss() {
+        logStart()
         let loss = []
         let n = 0
-        if (this.all.length > this.errors.length + this.finished.length) console.error('LOST SONGS')
+        if (this.all.length > this.errors.length + this.finished.length) logError('some songs may have gone missing')
         if (this.all.length > this.finished.length) {
             for (let i of this.all) {
                 if (this.finished.findIndex((f) => f.title == i.title && f.artist == i.artist) < 0) loss.push(i)
-                console.log(`checking ${n} of ${this.all.length}`)
+                logInfo(`checking ${n} of ${this.all.length}`)
             }
             itemToLog(this.logPath, 'loss', loss)
         } else {
-            console.log('finished without loss')
+            logInfo('finished without loss')
         }
+        logEnd()
     }
 
     enqueue(item: QueueItem) {

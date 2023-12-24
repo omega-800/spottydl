@@ -1,17 +1,31 @@
 import ytpl from 'ytpl'
 import csv from 'csvtojson'
 import fs from 'fs'
-import path from 'path'
 import { QueueItem } from './Queue'
 import { Queue } from './Queue'
 import { downloadTrack, downloadAlbum, Track, Album } from '.'
 import { getTrack, getAlbum } from './Info'
-import { fmtAlbumPath, fmtAlbumTrack, fmtSinglePath, fmtSingleTrack, checkLinkType, sanitize } from './Util'
+import {
+    fmtAlbumPath,
+    fmtAlbumTrack,
+    fmtSinglePath,
+    fmtSingleTrack,
+    checkLinkType,
+    sanitize,
+    logInfo,
+    logError,
+    logStart,
+    logEnd,
+    fmtAlbumImgName,
+    fmtAlbumImgPath
+} from './Util'
+import path from 'path'
 
 let logPath = 'data/log/'
 let historyPath = 'data/history.csv'
 let spPath = 'downloads/spotify'
 let ytPath = 'downloads/yt'
+let imgPath = 'downloads/img'
 
 async function fromYtPlaylist(id: string) {
     const playlist = await ytpl(id)
@@ -30,6 +44,10 @@ async function fromYtPlaylist(id: string) {
 }
 
 function fromYtCsv(path: string) {
+    if (!fs.existsSync(path)) {
+        logError(`Given Youtube file doesn't exist: ${path}`)
+        return
+    }
     csv()
         .fromFile(path)
         .then((json: any) => {
@@ -43,6 +61,32 @@ function fromYtCsv(path: string) {
                 })
             )
         })
+}
+
+function fromSpJson(path: string) {
+    if (!fs.existsSync(path)) {
+        logError(`Given Spotify file doesn't exist: ${path}`)
+        return
+    }
+    const library = JSON.parse(fs.readFileSync(path).toString())
+    library.tracks.forEach((track: any) => {
+        track = { ...track, title: track.track }
+        if (!fs.existsSync(`${spPath}/${fmtSinglePath('spotify_likes', track)}/${fmtSingleTrack(track)}`)) {
+            queue.enqueue({
+                fromYoutube: false,
+                id: track.uri.split(':').pop(),
+                folder: 'likes'
+            })
+        }
+    })
+
+    library.albums.forEach((album: any) => {
+        queue.enqueue({
+            fromYoutube: false,
+            id: album.uri.split(':').pop(),
+            isAlbum: true
+        })
+    })
 }
 
 export function ytDl(item: QueueItem) {
@@ -82,7 +126,6 @@ export function spDl(item: QueueItem) {
 
 async function dlSpTrack(id: string, folder?: string) {
     await getTrack('https://open.spotify.com/track/' + id).then(async (results) => {
-        //console.log(results);
         results = results as Track
         let path = `${spPath}/${folder ? sanitize(folder) + '/' : ''}`
 
@@ -108,9 +151,12 @@ async function dlSpAlbum(id: string) {
             })
             return
         }
-        let path = fmtAlbumPath(spPath, results)
-        if (!fs.existsSync(path)) fs.mkdirSync(path, { recursive: true })
-        let album = await downloadAlbum(results, path, false)
+        let albumPath = fmtAlbumPath(spPath, results)
+        let imgFolder = fmtAlbumImgPath(imgPath, results)
+        let img = path.resolve(__dirname, '..', imgFolder, fmtAlbumImgName(results))
+        if (!fs.existsSync(albumPath)) fs.mkdirSync(albumPath, { recursive: true })
+        if (!fs.existsSync(imgFolder)) fs.mkdirSync(imgFolder, { recursive: true })
+        let album = await downloadAlbum(results, albumPath, img, false)
         queue.downloading.splice(queue.downloading.findIndex((i) => i.id == id))
         if (typeof album == 'string') {
             queue.errors.push({ msg: album, ...results })
@@ -126,11 +172,17 @@ let logTrash = [0, 0, 0, 0, 0]
 const ytReg = /(https:\/\/)?(www|music)?.?youtu(\.be|be\.com)\/(playlist|watch)\?(list|v)=(.*)\/?&?/
 const csvReg = /.+\.csv$/
 const jsonReg = /.+\.json$/
+
 function startDl(urls?: string[]) {
+    if (!process.env.LASTFM_KEY) logError("env.LASTFM_KEY isn't set: only limited metadata can be scraped")
+    if (!process.env.GENIUS_KEY) logError("env.GENIUS_KEY isn't set: only limited lyrics can be scraped")
     fs.mkdirSync(logPath, { recursive: true })
+    if (!fs.existsSync(historyPath)) fs.writeFileSync(historyPath, 'Date;URL')
     if (urls) {
+        logStart()
+        logInfo('badabingbadaboom')
+        logEnd()
         urls.forEach((url) => {
-            if (!fs.existsSync(historyPath)) fs.writeFileSync(historyPath, 'Date;URL')
             if (fs.readFileSync(historyPath).toString().split(';').pop() != url)
                 fs.appendFileSync(historyPath, `\n${now};${url}`)
             try {
@@ -148,7 +200,7 @@ function startDl(urls?: string[]) {
                         isAlbum: false
                     })
                 } else {
-                    console.log('TODO: implement SP playlist')
+                    logInfo('TODO: implement SP playlist')
                 }
             } catch (e) {
                 if (ytReg.test(url)) {
@@ -158,42 +210,21 @@ function startDl(urls?: string[]) {
                     if (type == 'list' && id) {
                         fromYtPlaylist(id)
                     } else if (type == 'v') {
-                        console.log('TODO: implement YT track')
+                        logInfo('TODO: implement YT track')
                     } else {
-                        console.log('Cannot parse yt URL')
+                        logError('Cannot parse yt URL')
                     }
                 } else if (csvReg.test(url)) {
                     fromYtCsv(url)
                 } else if (jsonReg.test(url)) {
-                    const library = JSON.parse(fs.readFileSync(url).toString())
-                    library.tracks.forEach((track: any) => {
-                        track = { ...track, title: track.track }
-                        if (
-                            !fs.existsSync(
-                                `${spPath}/${fmtSinglePath('spotify_likes', track)}/${fmtSingleTrack(track)}`
-                            )
-                        ) {
-                            queue.enqueue({
-                                fromYoutube: false,
-                                id: track.uri.split(':').pop(),
-                                folder: 'likes'
-                            })
-                        }
-                    })
-
-                    library.albums.forEach((album: any) => {
-                        queue.enqueue({
-                            fromYoutube: false,
-                            id: album.uri.split(':').pop(),
-                            isAlbum: true
-                        })
-                    })
+                    fromSpJson(url)
                 } else {
-                    console.log('URL is not valid')
+                    logError('URL is not valid')
                 }
             }
         })
     } else {
+        logError('No params received')
         // hardcode stuff if u want or prompt
     }
 
@@ -221,7 +252,7 @@ function startDl(urls?: string[]) {
                 queue.lost.length
             ]
             if (log[2] != logTrash[2]) {
-                console.log(...log)
+                logInfo(`queue: ${log[0]} downloading: ${log[1]} finished: ${log[2]} errors: ${log[3]} lost: ${log[4]}`)
                 logTrash = log
             }
         }

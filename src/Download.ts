@@ -1,10 +1,22 @@
 import { Album, Track, Playlist, Results, checkType, checkPath } from './index'
-import NodeID3 from 'node-id3'
+import NodeID3, { Tags } from 'node-id3'
 import ytdl from 'ytdl-core'
 import ffmpeg from 'fluent-ffmpeg'
-import axios from 'axios'
+import axios, { AxiosHeaders } from 'axios'
 import { unlinkSync, existsSync } from 'fs'
-import { fmtAlbumTrack, fmtSingleTrack } from './Util'
+import {
+    fmtAlbumTrack,
+    fmtSingleTrack,
+    logEnd,
+    logError,
+    logInfo,
+    logItem,
+    logStart,
+    logSubItem,
+    logSuccess
+} from './Util'
+import fs from 'fs'
+import sharp from 'sharp'
 
 // Private Methods
 const dl_track = async (id: string, filename: string): Promise<boolean> => {
@@ -13,11 +25,11 @@ const dl_track = async (id: string, filename: string): Promise<boolean> => {
             .audioBitrate(128)
             .save(filename)
             .on('error', (err: any) => {
-                console.error(`Failed to write file (${filename}): ${err}`)
+                logError(`Failed to write file (${filename}): ${err}`)
                 try {
                     unlinkSync(filename)
                 } catch (err) {
-                    console.log(err)
+                    logError(`${err}`)
                 }
                 resolve(false)
             })
@@ -29,72 +41,90 @@ const dl_track = async (id: string, filename: string): Promise<boolean> => {
 
 const dl_album_normal = async (obj: Album, oPath: string, tags: any): Promise<Results[]> => {
     let Results: any = []
+    logStart()
+    logItem(`Downloading album (slow): ${obj.name} (${obj.artist})`)
     for await (let res of obj.tracks) {
+        logSubItem(`Downloading track: ${res.title}`)
         let filename = `${oPath}${fmtAlbumTrack(res)}.mp3`
         let dlt = await dl_track(res.id, filename)
+        tags.title = res.title // Tags
+        tags.trackNumber = res.trackNumber
+        if (res.unsynchronisedLyrics) tags.unsynchronisedLyrics = res.unsynchronisedLyrics
+        if (res.genre) tags.genre = res.genre
+        if (res.comment) tags.comment = res.comment
         if (dlt) {
             let tagStatus = NodeID3.update(tags, filename)
             if (tagStatus) {
-                console.log(`Finished: ${filename}`)
+                logSuccess(`Finished: ${filename}`)
                 Results.push({ status: 'Success', filename: filename, ...res, ...tags })
             } else {
-                console.log(`Failed: ${filename} (tags)`)
+                logError(`Failed: ${filename} (tags)`)
                 Results.push({ status: 'Failed (tags)', filename: filename, ...res, ...tags })
             }
         } else {
-            console.log(`Failed: ${filename} (stream)`)
-            Results.push({ status: 'Failed (stream)', filename: filename, id: res.id, ...res, ...tags })
+            logError(`Failed: ${filename} (stream)`)
+            Results.push({ status: 'Failed (stream)', filename: filename, ...res, ...tags })
         }
     }
+    logEnd()
     return Results
 }
 
-const dl_album_fast = async (obj: Album, oPath: string, tags: any): Promise<Results[]> => {
+const dl_album_fast = async (obj: Album, oPath: string, tags: Tags): Promise<Results[]> => {
     let Results: any = []
-    let i: number = 0 // Variable for specifying the index of the loop
+    let i: number = 0
     return await new Promise<Results[]>(async (resolve, reject) => {
+        logStart()
+        logItem(`Downloading album: ${obj.name} (${obj.artist})`)
         for await (let res of obj.tracks) {
             let filename = `${oPath}${fmtAlbumTrack(res)}.mp3`
             if (existsSync(filename)) {
                 Results.push({ status: 'Success', filename: filename, album_name: obj.name, ...res, ...tags })
-                console.log('Already exists: ', filename)
+                logInfo(`Already exists: ${filename}`)
                 i++
                 if (i == obj.tracks.length) {
+                    logEnd()
                     resolve(Results)
                 }
             } else {
+                logSubItem(`Downloading track: ${res.title}`)
                 ffmpeg(ytdl(res.id, { quality: 'highestaudio', filter: 'audioonly' }))
                     .audioBitrate(128)
                     .save(filename)
                     .on('error', (err: any) => {
-                        tags.title = res.name // Tags
+                        tags.title = res.title // Tags
                         tags.trackNumber = res.trackNumber
-                        Results.push({ status: 'Failed (stream)', filename: filename, id: res.id, ...res, ...tags })
-                        console.error(`Failed to write file (${filename}): ${err}`)
+                        Results.push({ status: 'Failed (stream)', filename: filename, ...res, ...tags })
+                        logError(`Failed to write file (${filename}): ${err}`)
                         try {
                             unlinkSync(filename)
                         } catch (err) {
-                            console.log(err)
+                            logError(`${err}`)
                         }
                         i++
                         if (i == obj.tracks.length) {
+                            logEnd()
                             resolve(Results)
                         }
                         // reject(err)
                     })
                     .on('end', () => {
                         i++
-                        tags.title = res.name
+                        tags.title = res.title
                         tags.trackNumber = res.trackNumber
+                        if (res.unsynchronisedLyrics) tags.unsynchronisedLyrics = res.unsynchronisedLyrics
+                        if (res.genre) tags.genre = res.genre
+                        if (res.comment) tags.comment = res.comment
                         let tagStatus = NodeID3.update(tags, filename)
                         if (tagStatus) {
-                            console.log(`Finished: ${filename}`)
+                            logSuccess(`Finished: ${filename}`)
                             Results.push({ status: 'Success', filename: filename, ...res, ...tags })
                         } else {
-                            console.log(`Failed to add tags: ${filename}`)
-                            Results.push({ status: 'Failed (tags)', filename: filename, id: res.id, ...res, ...tags })
+                            logError(`Failed to add tags: ${filename}`)
+                            Results.push({ status: 'Failed (tags)', filename: filename, ...res, ...tags })
                         }
                         if (i == obj.tracks.length) {
+                            logEnd()
                             resolve(Results)
                         }
                     })
@@ -110,7 +140,7 @@ const dl_album_fast = async (obj: Album, oPath: string, tags: any): Promise<Resu
  * @param {string} outputPath - String type, (optional) if not specified the output will be on the current dir
  * @returns {Results[]} <Results[]> if successful, `string` if failed
  */
-export const downloadTrack = async (obj: Track, outputPath: string = './'): Promise<Results[] | string> => {
+export const downloadTrack = async (obj: any, outputPath: string = './'): Promise<Results[] | string> => {
     try {
         // Check type and check if file path exists...
         if (checkType(obj) != 'Track') {
@@ -127,6 +157,9 @@ export const downloadTrack = async (obj: Track, outputPath: string = './'): Prom
                 imageBuffer: Buffer.from(albCover.data, 'utf-8')
             }
         }
+        if (obj.unsynchronisedLyrics) tags.unsynchronisedLyrics = obj.unsynchronisedLyrics
+        if (obj.genre) tags.genre = obj.genre
+        if (obj.comment) tags.comment = obj.comment
         let filename = `${checkPath(outputPath)}${fmtSingleTrack(obj)}.mp3`
         // EXPERIMENTAL
         if (existsSync(filename)) return [{ status: 'Success', filename: filename, id: obj.id, ...tags }]
@@ -157,6 +190,7 @@ export const downloadTrack = async (obj: Track, outputPath: string = './'): Prom
 export const downloadAlbum = async (
     obj: Album,
     outputPath: string = './',
+    imagePath: string = './',
     sync: boolean = true
 ): Promise<Results[] | string> => {
     try {
@@ -173,6 +207,9 @@ export const downloadAlbum = async (
             }
         }
         let oPath = checkPath(outputPath)
+
+        await dlAlbumCover(imagePath, obj.albumCoverURL)
+
         if (sync) {
             return await dl_album_normal(obj, oPath, tags)
         } else {
@@ -181,6 +218,31 @@ export const downloadAlbum = async (
     } catch (err: any) {
         return `Caught: ${err}`
     }
+}
+
+const dlAlbumCover = async (imgPath: string, url: string) => {
+    const resp = await axios.get(url, { responseType: 'arraybuffer' })
+    fs.writeFile(imgPath, resp.data, async (err) => {
+        if (err) logError(`Caught when downloading image: ${err}`)
+        logSuccess('Successfully downloaded image')
+        try {
+            let tmpImg = imgPath.replace(/(.+)(\.[a-z]+)$/, (match, g1, g2) => `${g1}_tmp${g2}`)
+            await sharp(imgPath).resize(1080, 1080).toFile(tmpImg)
+            await sharp(imgPath)
+                .blur(20)
+                .resize(1920, 1080)
+                .composite([
+                    {
+                        input: tmpImg,
+                        gravity: 'centre'
+                    }
+                ])
+                .toFile(imgPath.replace(/(.+)(\.[a-z]+)$/, (match, g1, g2) => `${g1}_wallpaper${g2}`))
+            fs.unlink(tmpImg, (err) => null)
+        } catch (e) {
+            console.log(e)
+        }
+    })
 }
 
 /**
@@ -212,17 +274,20 @@ export const downloadPlaylist = async (obj: Playlist, outputPath: string = './')
                     imageBuffer: Buffer.from(albCover.data, 'utf-8')
                 }
             }
+            if (res.unsynchronisedLyrics) tags.unsynchronisedLyrics = res.unsynchronisedLyrics
+            if (res.genre) tags.genre = res.genre
+            if (res.comment) tags.comment = res.comment
             if (dlt) {
                 let tagStatus = NodeID3.update(tags, filename)
                 if (tagStatus) {
-                    console.log(`Finished: ${filename}`)
+                    logSuccess(`Finished: ${filename}`)
                     Results.push({ status: 'Success', filename: filename, ...tags })
                 } else {
-                    console.log(`Failed: ${filename} (tags)`)
+                    logError(`Failed: ${filename} (tags)`)
                     Results.push({ status: 'Failed (tags)', filename: filename, ...tags })
                 }
             } else {
-                console.log(`Failed: ${filename} (stream)`)
+                logError(`Failed: ${filename} (stream)`)
                 Results.push({ status: 'Failed (stream)', filename: filename, id: res.id, ...tags })
             }
         }
@@ -274,7 +339,7 @@ export const retryDownload = async (Info: Results[]): Promise<Results[] | boolea
         })
         return Results
     } catch (err) {
-        console.error(`Caught: ${err}`)
+        logError(`Caught: ${err}`)
         return false
     }
 }

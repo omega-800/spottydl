@@ -1,19 +1,63 @@
-import { Track, Album, Playlist, Results } from './index'
+import { Track, Album, Playlist, Results, TmpTrack } from './index'
 import { existsSync } from 'fs'
 import { isArray } from 'util'
 import os from 'os'
+import { distance } from 'closest-match'
+
+export const logSuccess = (s: string) => console.log(`\x1b[1;90m\u258c\x1b[0;32m \u2713 ${s}\x1b[0m`)
+export const logItem = (s: string) => console.log(`\x1b[1;90m\u258c\x1b[1;35m \u1405 ${s}\x1b[0m`)
+export const logSubItem = (s: string) => console.log(`\x1b[1;90m\u258c\x1b[0;35m \u1405\u1405 ${s}\x1b[0m`)
+export const logInfo = (s: string) => console.warn(`\x1b[1;90m\u258c\x1b[0;33m \u24d8 ${s}\x1b[0m`)
+export const logError = (s: string) => console.error(`\x1b[1;90m\u258c\x1b[0;31m \u20e0 ${s}\x1b[0m`)
+export const logStart = () =>
+    console.info(`\n\x1b[1;90m\u259b${'\u2580'.repeat(20)}${' \u2580'.repeat(10)}${' \u2598'.repeat(10)}\x1b[0m`)
+export const logEnd = () =>
+    console.info(`\x1b[1;90m\u2599${'\u2584'.repeat(20)}${' \u2584'.repeat(10)}${' \u2596'.repeat(10)}\x1b[0m\n`)
+
+let illegalChars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+let legalChars = ['﹤', '﹥', '：', '＂', '／', '＼', '｜', '？', '＊']
+export const sanitize = (s: string): string => {
+    for (let i = 0; i < illegalChars.length; i++) {
+        s.replaceAll(illegalChars[i], legalChars[i])
+    }
+    return s
+}
 
 export const uid = (): string => Date.now().toString(36) + Math.random().toString(36).substr(2)
-export const sanitize = (path: string): string => path.replaceAll('/', '|').replaceAll('~', '=')
-export const fmtAlbumTrack = (item: Track): string => `${item.trackNumber}. ${sanitize(item.title)}`
+export const fmtAlbumTrack = (item: Track | TmpTrack): string => `${item.trackNumber}. ${sanitize(item.title)}`
 export const fmtAlbumPath = (path: string, item: Album): string =>
     `${path}/${sanitize(item.artist)}/${sanitize(item.name)}/`
+export const fmtAlbumImgName = (item: Album): string => `${sanitize(item.name)}.png`
+export const fmtAlbumImgPath = (path: string, item: Album): string => `${path}/${sanitize(item.artist)}/`
 export const fmtSingleTrack = (item: Track): string =>
     `${sanitize(item.title)}${item.artist ? ` - ${sanitize(item.artist)}` : ''}${
         item.album ? ` [${sanitize(item.album)}]` : ''
     }`
 export const fmtSinglePath = (path: string, item: Track): string =>
     `${path}${item.artist ? `/${item.artist}` : ''}${item.artist && item.album ? `/${item.album}` : ''}`
+
+export function closestGenre(ar1: string[], ar2: string[]) {
+    let diff = Number.MAX_VALUE,
+        m = ar1.length,
+        n = ar2.length,
+        x = 0,
+        l = 0,
+        r = n - 1,
+        res_l,
+        res_r
+
+    while (l < m && r >= 0) {
+        if (Math.abs(distance(ar1[l], ar2[r]) - x) < diff) {
+            res_l = l
+            res_r = r
+            diff = Math.abs(distance(ar1[l], ar2[r]) - x)
+        }
+        if (distance(ar1[l], ar2[r]) > x) r--
+        else l++
+    }
+    //console.log('The closest pair is [' + ar1[res_l!] + ', ' + ar2[res_r!] + ']')
+    return ar2[res_r!]
+}
 
 export const checkLinkType = (link: string) => {
     const reg =
