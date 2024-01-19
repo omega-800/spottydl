@@ -74,7 +74,7 @@ async function dlSpAlbum(item: QueueItem) {
         let img = path.resolve(__dirname, '..', imgFolder, fmtAlbumImgName(results))
         if (!fs.existsSync(albumPath)) fs.mkdirSync(albumPath, { recursive: true })
         if (!fs.existsSync(imgFolder)) fs.mkdirSync(imgFolder, { recursive: true })
-        let album = await downloadAlbum(results, albumPath, img, false)
+        let album = await downloadAlbum(results, albumPath, img)
 
         if (typeof album == 'string') {
             queue.pushToLog(album, 'errors', itemWithUrl)

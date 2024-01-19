@@ -18,7 +18,6 @@ import {
 import fs from 'fs'
 import sharp from 'sharp'
 
-// Private Methods
 const dl_track = async (id: string, filename: string): Promise<boolean> => {
     return await new Promise<boolean>((resolve, reject) => {
         ffmpeg(ytdl(id, { quality: 'highestaudio', filter: 'audioonly' }))
@@ -38,101 +37,6 @@ const dl_track = async (id: string, filename: string): Promise<boolean> => {
             })
     })
 }
-
-const dl_album_normal = async (obj: Album, oPath: string, tags: any): Promise<Results[]> => {
-    let Results: any = []
-    logStart()
-    logItem(`Downloading album (slow): ${obj.name} (${obj.artist})`)
-    for await (let res of obj.tracks) {
-        logSubItem(`Downloading track: ${res.title}`)
-        let filename = `${oPath}${fmtAlbumTrack(res)}.mp3`
-        let dlt = await dl_track(res.id, filename)
-        tags.title = res.title // Tags
-        tags.trackNumber = res.trackNumber
-        if (res.unsynchronisedLyrics) tags.unsynchronisedLyrics = res.unsynchronisedLyrics
-        if (res.genre) tags.genre = res.genre
-        if (res.comment) tags.comment = res.comment
-        if (dlt) {
-            let tagStatus = NodeID3.update(tags, filename)
-            if (tagStatus) {
-                logSuccess(`Finished: ${filename}`)
-                Results.push({ status: 'Success', filename: filename, ...res, ...tags })
-            } else {
-                logError(`Failed: ${filename} (tags)`)
-                Results.push({ status: 'Failed (tags)', filename: filename, ...res, ...tags })
-            }
-        } else {
-            logError(`Failed: ${filename} (stream)`)
-            Results.push({ status: 'Failed (stream)', filename: filename, ...res, ...tags })
-        }
-    }
-    logEnd()
-    return Results
-}
-
-const dl_album_fast = async (obj: Album, oPath: string, tags: Tags): Promise<Results[]> => {
-    let Results: any = []
-    let i: number = 0
-    return await new Promise<Results[]>(async (resolve, reject) => {
-        logStart()
-        logItem(`Downloading album: ${obj.name} (${obj.artist})`)
-        for await (let res of obj.tracks) {
-            let filename = `${oPath}${fmtAlbumTrack(res)}.mp3`
-            if (existsSync(filename)) {
-                Results.push({ status: 'Success', filename: filename, album_name: obj.name, ...res, ...tags })
-                logInfo(`Already exists: ${filename}`)
-                i++
-                if (i == obj.tracks.length) {
-                    logEnd()
-                    resolve(Results)
-                }
-            } else {
-                logSubItem(`Downloading track: ${res.title}`)
-                ffmpeg(ytdl(res.id, { quality: 'highestaudio', filter: 'audioonly' }))
-                    .audioBitrate(128)
-                    .save(filename)
-                    .on('error', (err: any) => {
-                        tags.title = res.title // Tags
-                        tags.trackNumber = res.trackNumber
-                        Results.push({ status: 'Failed (stream)', filename: filename, ...res, ...tags })
-                        logError(`Failed to write file (${filename}): ${err}`)
-                        try {
-                            unlinkSync(filename)
-                        } catch (err) {
-                            logError(`${err}`)
-                        }
-                        i++
-                        if (i == obj.tracks.length) {
-                            logEnd()
-                            resolve(Results)
-                        }
-                        // reject(err)
-                    })
-                    .on('end', () => {
-                        i++
-                        tags.title = res.title
-                        tags.trackNumber = res.trackNumber
-                        if (res.unsynchronisedLyrics) tags.unsynchronisedLyrics = res.unsynchronisedLyrics
-                        if (res.genre) tags.genre = res.genre
-                        if (res.comment) tags.comment = res.comment
-                        let tagStatus = NodeID3.update(tags, filename)
-                        if (tagStatus) {
-                            logSuccess(`Finished: ${filename}`)
-                            Results.push({ status: 'Success', filename: filename, ...res, ...tags })
-                        } else {
-                            logError(`Failed to add tags: ${filename}`)
-                            Results.push({ status: 'Failed (tags)', filename: filename, ...res, ...tags })
-                        }
-                        if (i == obj.tracks.length) {
-                            logEnd()
-                            resolve(Results)
-                        }
-                    })
-            }
-        }
-    })
-}
-// END
 
 /**
  * Download the Spotify Track, need a <Track> type for first param, the second param is optional
@@ -190,13 +94,12 @@ export const downloadTrack = async (obj: any, outputPath: string = './'): Promis
 export const downloadAlbum = async (
     obj: Album,
     outputPath: string = './',
-    imagePath: string = './',
-    sync: boolean = true
+    imagePath: string = './'
 ): Promise<Results[] | string> => {
     try {
-        if (checkType(obj) != 'Album') {
-            throw Error('obj passed is not of type <Album>')
-        }
+        if (checkType(obj) != 'Album') return 'obj passed is not of type <Album>'
+        logStart()
+        logItem(`Downloading album: ${obj.name} (${obj.artist})`)
         let albCover = await axios.get(obj.albumCoverURL, { responseType: 'arraybuffer' })
         let tags: any = {
             artist: obj.artist,
@@ -210,12 +113,50 @@ export const downloadAlbum = async (
 
         await dlAlbumCover(imagePath, obj.albumCoverURL)
 
-        if (sync) {
-            return await dl_album_normal(obj, oPath, tags)
-        } else {
-            return await dl_album_fast(obj, oPath, tags)
+        let Results: any = []
+        for (let res of obj.tracks) {
+            let filename = `${oPath}${fmtAlbumTrack(res)}.mp3`
+            if (existsSync(filename)) {
+                Results.push({ status: 'Success', filename: filename, album_name: obj.name, ...res, ...tags })
+                logInfo(`Already exists: ${filename}`)
+            } else {
+                logSubItem(`Downloading track: ${res.title}`)
+                ffmpeg(ytdl(res.id, { quality: 'highestaudio', filter: 'audioonly' }))
+                    .audioBitrate(128)
+                    .save(filename)
+                    .on('error', (err: any) => {
+                        tags.title = res.title // Tags
+                        tags.trackNumber = res.trackNumber
+                        Results.push({ status: 'Failed (stream)', filename: filename, ...res, ...tags })
+                        logError(`Failed to write file (${filename}): ${err}`)
+                        try {
+                            unlinkSync(filename)
+                        } catch (err) {
+                            logError(`${err}`)
+                        }
+                        // reject(err)
+                    })
+                    .on('end', () => {
+                        tags.title = res.title
+                        tags.trackNumber = res.trackNumber
+                        if (res.unsynchronisedLyrics) tags.unsynchronisedLyrics = res.unsynchronisedLyrics
+                        if (res.genre) tags.genre = res.genre
+                        if (res.comment) tags.comment = res.comment
+                        let tagStatus = NodeID3.update(tags, filename)
+                        if (tagStatus) {
+                            logSuccess(`Finished: ${filename}`)
+                            Results.push({ status: 'Success', filename: filename, ...res, ...tags })
+                        } else {
+                            logError(`Failed to add tags: ${filename}`)
+                            Results.push({ status: 'Failed (tags)', filename: filename, ...res, ...tags })
+                        }
+                    })
+            }
         }
+        logEnd()
+        return Results
     } catch (err: any) {
+        logError(`Caught: ${err}`)
         return `Caught: ${err}`
     }
 }

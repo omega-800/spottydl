@@ -1,13 +1,12 @@
 import csv from 'csvtojson'
 import fs from 'fs'
 import { QueueItem } from './Queue'
-import { downloadTrack, Track, Album, queue, ytPath, downloadAlbum } from '.'
-import { checkYtLinkType, fmtAlbumPath, fmtAlbumTrack, fmtSinglePath, fmtSingleTrack, logError } from './Util'
+import { queue } from '.'
+import { checkYtLinkType, logError } from './Util'
 import ytpl from 'ytpl'
 
 export async function fromYtPlaylist(id: string) {
     let playlist = await ytpl(id)
-    console.log(playlist)
     return {
         id: id,
         album: playlist.title.replace(/^Album - /, ''),
